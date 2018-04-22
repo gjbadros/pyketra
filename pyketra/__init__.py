@@ -28,6 +28,7 @@ import re
 import json
 import requests
 import socket
+from urllib.parse import quote
 
 
 def xml_escape(s):
@@ -339,21 +340,9 @@ class Ketra(object):
     """Connects to the Ketra controller to send and receive commands and status"""
     self._conn.connect()
 
-  # Ketra
-  def send_cmd(self, cmd):
-    self._conn.send_ascii_nl(cmd)
-
-  # Ketra
-  def send(self, op, vid, *args):
-    """Formats and sends the requested command to the Ketra controller."""
-#    out_cmd = ",".join(
-#        (cmd, str(vid)) + tuple((str(x) for x in args)))
-    out_cmd = str(vid) + " " + " ".join(args)
-    self._conn.send_ascii_nl(op + " " + out_cmd)
-
   def load_json_db(self):
     """Load the Ketra database from the server."""
-    filename = self._host + "_config.txt"
+    filename = self._host + "_ketraconfig.txt"
     json_db = ""
     try:
       f = open(filename, "r")
@@ -533,7 +522,13 @@ class Output(KetraEntity):
   def __do_query_level(self):
     """Helper to perform the actual query the current dimmer level of the
     output. For pure on/off loads the result is either 0.0 or 100.0."""
-    self._ketra.send("GETLOAD", self._vid)
+    lightURL = 'https://' + self._ketra._host + '/ketra.cgi/api/v1/Groups/' + quote(self._name)
+    r = requests.get(lightURL, auth=('', self._ketra._password), verify=False)
+    content = r.json()['Content']
+    state = content['State']
+    self._level = state['Brightness']
+    return True
+    
 
   def last_level(self):
     """Returns last cached value of the output level, no query is performed."""
@@ -553,8 +548,19 @@ class Output(KetraEntity):
       return
 #    self._ketra.send(Ketra.OP_EXECUTE, Output.CMD_TYPE, self._vid,
 #        Output.ACTION_ZONE_LEVEL, "%.2f" % new_level)
-    self._ketra.send("LOAD", self._vid, str(new_level))
+    lightURL = 'https://' + self._ketra._host + '/ketra.cgi/api/v1/Groups/' + quote(self._name) + "/State"
+    state_noStart = { "Brightness": new_level/100,
+                      "PowerOn": True, 
+                      "Vibrancy": 0.6, 
+                      "xChromaticity": 0.5,
+                      "yChromaticity": 0.4, 
+                      "TransitionTime": 1000, 
+                      "TransitionComplete": True }
+    r = requests.put(lightURL, data=json.dumps(state_noStart), auth=('', self._ketra._password), verify=False)
+#    content = r.json()['Content']
+#    state = content['State']
     self._level = new_level
+#    return True
 
 ## At some later date, we may want to also specify fade and delay times    
 #  def set_level(self, new_level, fade_time, delay):
