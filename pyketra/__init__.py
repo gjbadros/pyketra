@@ -279,7 +279,7 @@ class Ketra(object):
   OP_RESPONSE = 'R:'        # Response lines come back from Ketra with this prefix
   OP_STATUS = 'S:'          # Status report lines come back from Ketra with this prefix
 
-  def __init__(self, host, password):
+  def __init__(self, host, password, noop_set_state):
     """Initializes the Ketra object. No connection is made to the remote
     device."""
     self._host = host
@@ -291,8 +291,7 @@ class Ketra(object):
     self._subscribers = {}
     self._id_to_area = {}  # copied out from the parser
     self._id_to_load = {}  # copied out from the parser
-    self._r_cmds = [ 'LOGIN', 'LOAD', 'STATUS', 'GETLOAD' ]
-    self._s_cmds = [ 'LOAD', 'TASK', 'LED' ]
+    self._noop_set_state = noop_set_state
 
   def subscribe(self, obj, handler):
     """Subscribes to status updates of the requested object.
@@ -516,7 +515,7 @@ class Output(KetraEntity):
     _LOGGER.warning("Sending Ketra " + json.dumps(dict))
     # TODO: make an option to do NOOP sends -- for now just comment out if you don't want to hit
     # the Ketra N4 with the request
-    if False:
+    if not self._ketra._noop_set_state:
       r = requests.put(lightURL, data=json.dumps(dict), auth=('', self._ketra._password), verify=False)
     else:
       _LOGGER.warning("NOT ACTUALLY MAKING REQUEST TO KETRA N4")
