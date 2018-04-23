@@ -472,7 +472,7 @@ class Output(KetraEntity):
   switched/dimmed load, e.g. light fixture, outlet, etc."""
   CMD_TYPE = 'LOAD'
   ACTION_ZONE_LEVEL = 1
-  _wait_seconds = 0.03  # TODO:move this to a parameter
+  _wait_seconds = 0.5  # TODO:move this to a parameter
 
   def __init__(self, ketra, name, area, output_type, load_type, vid):
     """Initializes the Output."""
@@ -536,7 +536,7 @@ class Output(KetraEntity):
     """Sets the new brightness level."""
     if self._level == new_level:
       return
-    self._set_state({ "Brightness": new_level/100,
+    self._set_state({ "Brightness": new_level,
                       "PowerOn": True, 
                       "TransitionTime": 1000, 
                       "TransitionComplete": True })
