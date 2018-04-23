@@ -28,14 +28,71 @@ import re
 import json
 import requests
 import socket
+from math import log
 from urllib.parse import quote
 from colormath.color_objects import LabColor, xyYColor, sRGBColor
 from colormath.color_conversions import convert_color
+
+_LOGGER = logging.getLogger(__name__)
 
 def xml_escape(s):
   answer = s.replace("<", "&lt;")
   answer = answer.replace("&", "&amp;")
   return answer
+
+
+# From http://www.tannerhelland.com/4435/convert-temperature-rgb-algorithm-code/
+# returns [red, green, blue]
+def cctKelvin_to_rgbColor(kelvin):
+  temp = kelvin/100
+  
+  # calc red
+  if temp <= 66:
+    red = 255
+  else:
+    red = temp - 60
+    red = 329.698727446 * (red ** -0.1332047592)
+    if red < 0:
+      red = 0
+    elif red > 255:
+      red = 255
+
+  # calc green
+  if temp <= 66:
+    green = temp
+    green = 99.4708025861 * log(green) - 161.1195681661
+  else:
+    green = temp - 60
+    green = 288.1221695283 * (green ** -0.0755148492)
+  if green < 0:
+    green = 0
+  elif green > 255:
+    green = 255
+  
+  # calc blue
+  if temp >= 66:
+    blue = 255
+  else:
+    if temp <=19:
+      blue = 0
+    else:
+      blue = temp - 10
+      blue = 138.5177312231 * log(blue) - 305.0447927307
+      if blue < 0:
+        blue = 0
+      elif blue > 255:
+        blue = 255
+
+  return [red, green, blue]
+
+
+# return [x,y]
+def cctKelvin_to_xyColor(kelvin):
+  [red, green, blue] = cctKelvin_to_rgbColor(kelvin)
+  _LOGGER.info("kelvin %s converts to %d,%d,%d" % (kelvin, red, green, blue))
+  srgb = sRGBColor(red, green, blue)
+  xyY = convert_color(srgb, xyYColor)
+  return [xyY.xyy_x, xyY.xyy_y]
 
 
 # ===================================================================================
@@ -78,9 +135,6 @@ def discoverN4Device(n4SerialNumber):
                 pass
     return None
 
-
-_LOGGER = logging.getLogger(__name__)
-
 class KetraException(Exception):
   """Top level module exception."""
   pass
@@ -99,7 +153,7 @@ class ConnectionExistsError(KetraException):
 class KetraConnection(threading.Thread):
   """Encapsulates the connection to the Ketra controller."""
 
-  def __init__(self, host, password, recv_callback):
+  def __init__(self, host, password):
     """Initializes the ketra connection, doesn't actually connect."""
     threading.Thread.__init__(self)
 
@@ -238,7 +292,7 @@ class Ketra(object):
     self._host = host
     self._password = password
     self._name = None
-    self._conn = KetraConnection(host, password, self._recv)
+    self._conn = KetraConnection(host, password)
     self._ids = {}
     self._names = {}   # maps from unique name to id
     self._subscribers = {}
@@ -277,58 +331,6 @@ class Ketra(object):
         i += 1
       _LOGGER.warning("Repeated name `%s' in area %s - using %s" % (oldname, area.name, obj.name))
     self._names[obj.name] = obj.vid
-
-
-  # TODO: update this to handle async status updates
-  def _recv(self, line):
-    """Invoked by the connection manager to process incoming data."""
-    _LOGGER.info("_recv got line: %s" % line)
-    if line == '':
-      return
-    # Only handle query response messages, which are also sent on remote status
-    # updates (e.g. user manually pressed a keypad button)
-#    if line.find(Ketra.OP_RESPONSE) != 0:
-#      _LOGGER.debug("ignoring %s" % line)
-#      return
-    if line[0] == 'R':
-      cmds = self._r_cmds
-    elif line[0] == 'S':
-      cmds = self._s_cmds
-    else:
-      _LOGGER.error("_recv got unknown line start character")
-      return
-    parts = re.split(r'[ :]', line[2:])
-    cmd_type = parts[0]
-    vid = parts[1]
-    args = parts[2:]
-    if cmd_type not in cmds:
-      _LOGGER.info("Unknown cmd %s (%s)" % (cmd_type, line))
-      return
-    if cmd_type == 'ERROR':
-      _LOGGER.error("_recv got ERROR line: %s" % line)
-      return
-    elif cmd_type == 'LOGIN':
-      _LOGGER.info("login successful")
-      return
-    elif cmd_type == 'STATUS':
-      return
-    elif cmd_type == 'GETLOAD':
-      return
-
-    ids = self._ids[cmd_type]
-    if not vid.isdigit():
-      _LOGGER.warning("VID %s is not an integer" % vid)
-      return
-    vid = int(vid)
-    if vid not in ids:
-      _LOGGER.warning("Unknown id %d (%s)" % (vid, line))
-      return
-    obj = ids[vid]
-    # First let the device update itself
-    handled = obj.handle_update(args)
-    # Now notify anyone who cares that device  may have changed
-    if handled and obj in self._subscribers:
-      self._subscribers[obj](obj)
 
   def connect(self):
     """Connects to the Ketra controller to send and receive commands and status"""
@@ -464,16 +466,6 @@ class KetraEntity(object):
     """The area vid"""
     return self._area
 
-  def handle_update(self, args):
-    """The handle_update callback is invoked when an event is received
-    for the this entity.
-
-    Returns:
-      True - If event was valid and was handled.
-      False - otherwise.
-    """
-    return False
-
 
 class Output(KetraEntity):
   """This is the output entity in Ketra universe. This generally refers to a
@@ -487,9 +479,10 @@ class Output(KetraEntity):
     super(Output, self).__init__(ketra, name, area, vid)
     self._output_type = output_type
     self._load_type = load_type
-    self._level = 1
+    self._level = 0
     self._rgb = [ None, None, None ]
-    self._xy = [ None ]
+    self._xy = [ None, None ]
+    self._cct = None
     self._query_waiters = _RequestHelper()
 
     self._ketra.register_id(Output.CMD_TYPE, self)
@@ -504,16 +497,6 @@ class Output(KetraEntity):
     return str({'name': self._name, 'area': self._area,
                 'type': self._load_type, 'load': self._load_type,
                 'id': self._vid})
-
-  def handle_update(self, args):
-    """Handles an event update for this object, e.g. dimmer level change."""
-    _LOGGER.warning("ketra handle_update %d -- %s" % (self._vid, args))
-    level = float(args[0])
-    _LOGGER.warning("Updating %d(%s): l=%f" % (
-        self._vid, self._name, level))
-    self._level = level
-    self._query_waiters.notify()
-    return True
 
   def __do_query_level(self):
     """Helper to perform the actual query the current dimmer level of the
@@ -542,7 +525,10 @@ class Output(KetraEntity):
     _LOGGER.warning("Sending Ketra " + json.dumps(dict))
     # TODO: make an option to do NOOP sends -- for now just comment out if you don't want to hit
     # the Ketra N4 with the request
-    r = requests.put(lightURL, data=json.dumps(dict), auth=('', self._ketra._password), verify=False)
+    if False:
+      r = requests.put(lightURL, data=json.dumps(dict), auth=('', self._ketra._password), verify=False)
+    else:
+      _LOGGER.warning("NOT ACTUALLY MAKING REQUEST TO KETRA N4")
     
   
   @level.setter
@@ -591,6 +577,23 @@ class Output(KetraEntity):
                       "TransitionTime": 1000, 
                       "TransitionComplete": True })
     self._xy = new_xy
+
+  @property
+  def cct(self):
+    """Returns current CCT (coordinated color temperature) of the lamp."""
+    return self._cct
+
+  @cct.setter
+  def cct(self, new_cct):
+    if (self._cct == new_cct):
+      return
+    [x,y] = cctKelvin_to_xyColor(new_cct)
+    self._set_state({ "PowerOn": True,
+                      "xChromaticity": x,
+                      "yChromaticity": y,
+                      "TransitionTime": 1000,
+                      "TransitionComplete": True })
+    self._cct = new_cct
     
 ## At some later date, we may want to also specify fade and delay times    
 #  def set_level(self, new_level, fade_time, delay):
@@ -671,15 +674,6 @@ class Keypad(KetraEntity):
   def buttons(self):
     """Return a tuple of buttons for this keypad."""
     return tuple(button for button in self._buttons)
-
-  def handle_update(self, args):
-    """The callback invoked by the main event loop if there's an event from this keypad."""
-    component = int(args[0])
-    action = int(args[1])
-    params = [int(x) for x in args[2:]]
-    _LOGGER.debug("Updating %d(%s): c=%d a=%d params=%s" % (
-        self._vid, self._name, component, action, params))
-    return True
 
 
 class Area(object):
