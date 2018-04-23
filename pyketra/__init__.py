@@ -140,7 +140,7 @@ class KetraException(Exception):
   pass
 
 
-class VIDExistsError(KetraException):
+class IDExistsError(KetraException):
   """Asserted when there's an attempt to register a duplicate integration id."""
   pass
 
@@ -184,10 +184,10 @@ class KetraJsonDbParser(object):
     self._ketra = ketra
     self._json_db = json_db
     self.outputs = []
-    self.vid_to_area = {}
-    self.vid_to_load = {}
-    self.vid_to_keypad = {}
-    self.vid_to_button = {}
+    self.id_to_area = {}
+    self.id_to_load = {}
+    self.id_to_keypad = {}
+    self.id_to_button = {}
     
     self.project_name = None
 
@@ -197,23 +197,16 @@ class KetraJsonDbParser(object):
 
     area = self._parse_area("Ketra_Area") # FIXME: maybe do this off the N4 ip or hostname
     _LOGGER.info("area = " + str(area))
-    self.vid_to_area[area.vid] = area
+    self.id_to_area[area.id] = area
 
     for load_json in self._json_db:
       output = self._parse_output(load_json)
       if output is None:
         continue
       self.outputs.append(output)
-      self.vid_to_load[output.vid] = output
+      self.id_to_load[output.id] = output
       _LOGGER.info("output = " + str(output))
-      self.vid_to_area[output.area].add_output(output)
-
-#    keypads = root.findall(".//Objects//Keypad[@VID]")
-#    for kp_json in keypads:
-#      kp = self._parse_keypad(kp_json)
-#      self.vid_to_keypad[kp.vid] = kp
-#      _LOGGER.info("kp = " + str(kp))
-#      self.vid_to_area[kp.area].add_keypad(kp)
+      self.id_to_area[output.area].add_output(output)
 
     return True
 
@@ -223,7 +216,7 @@ class KetraJsonDbParser(object):
     area = Area(self._ketra,
                 name=hostname,
                 parent=None,
-                vid=hostname,
+                id=hostname,
                 note='')
     return area
 
@@ -235,26 +228,26 @@ class KetraJsonDbParser(object):
       out_name = out_name.strip()
     else:
       _LOGGER.info("Using dname = " + out_name)
-    area_vid = 'Ketra_Area'  # FIXME
+    area_id = 'Ketra_Area'  # FIXME
 
-#    area_name = self.vid_to_area[area_vid].name
+#    area_name = self.id_to_area[area_id].name
     load_type = "Ketra"
 
     output = Output(self._ketra,
                     name=out_name,
-                    area=area_vid,
+                    area=area_id,
                     output_type='light',
                     load_type=load_type,
-                    vid=output_json['Id'])
+                    id=output_json['Id'])
     return output
 
   def _parse_keypad(self, keypad_json):
     """Parses a keypad device."""
-    area_vid = int(keypad_json.find('Area').text)
+    area_id = int(keypad_json.find('Area').text)
     keypad = Keypad(self._ketra,
                     name=keypad_json.find('Name').text,
-                    area=area_vid,
-                    vid=int(keypad_json.get('VID')))
+                    area=area_id,
+                    id=int(keypad_json.get('ID')))
     return keypad
 
   def _parse_button(self, component_json):
@@ -296,8 +289,8 @@ class Ketra(object):
     self._ids = {}
     self._names = {}   # maps from unique name to id
     self._subscribers = {}
-    self._vid_to_area = {}  # copied out from the parser
-    self._vid_to_load = {}  # copied out from the parser
+    self._id_to_area = {}  # copied out from the parser
+    self._id_to_load = {}  # copied out from the parser
     self._r_cmds = [ 'LOGIN', 'LOAD', 'STATUS', 'GETLOAD' ]
     self._s_cmds = [ 'LOAD', 'TASK', 'LED' ]
 
@@ -311,16 +304,16 @@ class Ketra(object):
 
   #TODO: cleanup this awful logic
   def register_id(self, cmd_type, obj):
-    """Registers an object (through its vid [ketra id]) to receive update
+    """Registers an object (through its id [ketra id]) to receive update
     notifications. This is the core mechanism how Output and Keypad objects get
     notified when the controller sends status updates."""
     ids = self._ids.setdefault(cmd_type, {})
-    if obj.vid in ids:
-      raise VIDExistsError("VID exists %s" % obj.vid)
-    self._ids[cmd_type][obj.vid] = obj
+    if obj.id in ids:
+      raise IDExistsError("ID exists %s" % obj.id)
+    self._ids[cmd_type][obj.id] = obj
     obj.name = obj.name.title().strip()
     if obj.name in self._names:
-      area = self._vid_to_area.get(int(obj.area))
+      area = self._id_to_area.get(int(obj.area))
       oldname = obj.name
       newname = obj.name
 #      newname = "%s %s" % (area.name.title().strip(), obj.name)
@@ -330,21 +323,24 @@ class Ketra(object):
         obj.name = newname + " " + str(i)
         i += 1
       _LOGGER.warning("Repeated name `%s' in area %s - using %s" % (oldname, area.name, obj.name))
-    self._names[obj.name] = obj.vid
+    self._names[obj.name] = obj.id
 
   def connect(self):
     """Connects to the Ketra controller to send and receive commands and status"""
     self._conn.connect()
 
-  def load_json_db(self):
+  def load_json_db(self, disable_cache):
     """Load the Ketra database from the server."""
     filename = self._host + "_ketraconfig.txt"
     json_db = ""
     try:
-      f = open(filename, "r")
-      json_db = json.loads(f.read())['Content']
-      f.close()
-      _LOGGER.warning("read cached ketra configuration file " + filename)
+      if not disable_cache:
+        f = open(filename, "r")
+        json_db = json.loads(f.read())['Content']
+        f.close()
+        _LOGGER.warning("read cached ketra configuration file " + filename)
+      else:
+        raise Exception("nocache")
     except Exception as e:
       _LOGGER.error("Exception = " + str(e))
       groupsUrl = 'https://' + self._host + '/ketra.cgi/api/v1/groups'
@@ -366,14 +362,14 @@ class Ketra(object):
     # print(json_db[0:10000])
 
     parser = KetraJsonDbParser(ketra=self, json_db=json_db)
-    self._vid_to_area = parser.vid_to_area
+    self._id_to_area = parser.id_to_area
     self._name = parser.project_name
     self._outputs = parser.outputs
-    self._vid_to_load = parser.vid_to_load
+    self._id_to_load = parser.id_to_load
     assert(parser.parse())     # throw our own exception
    
     _LOGGER.info('Found Ketra project: %s, %d areas and %d loads' % (
-        self._name, len(self._vid_to_area.keys()), len(self._vid_to_load.keys())))
+        self._name, len(self._id_to_area.keys()), len(self._id_to_load.keys())))
 
     return True
 
@@ -434,12 +430,12 @@ class KetraEntity(object):
   """Base class for all the Ketra objects we'd like to manage. Just holds basic
   common info we'd rather not manage repeatedly."""
 
-  def __init__(self, ketra, name, area, vid):
+  def __init__(self, ketra, name, area, id):
     """Initializes the base class with common, basic data."""
     self._ketra = ketra
     self._name = name
     self._area = area
-    self._vid = vid
+    self._id = id
 
   @property
   def name(self):
@@ -452,18 +448,13 @@ class KetraEntity(object):
     self._name = value
 
   @property
-  def vid(self):
-    """The integration id"""
-    return self._vid
-
-  @property
   def id(self):
-    """The integration id"""
-    return self._vid
+    """The ketra integration id"""
+    return self._id
 
   @property
   def area(self):
-    """The area vid"""
+    """The area id"""
     return self._area
 
 
@@ -474,9 +465,9 @@ class Output(KetraEntity):
   ACTION_ZONE_LEVEL = 1
   _wait_seconds = 0.5  # TODO:move this to a parameter
 
-  def __init__(self, ketra, name, area, output_type, load_type, vid):
+  def __init__(self, ketra, name, area, output_type, load_type, id):
     """Initializes the Output."""
-    super(Output, self).__init__(ketra, name, area, vid)
+    super(Output, self).__init__(ketra, name, area, id)
     self._output_type = output_type
     self._load_type = load_type
     self._level = 0
@@ -490,13 +481,13 @@ class Output(KetraEntity):
   def __str__(self):
     """Returns a pretty-printed string for this object."""
     return 'Output name: "%s" area: %s type: "%s" load: "%s" id: %s %s' % (
-        self._name, self._area, self._output_type, self._load_type, self._vid, ("(dim)" if self.is_dimmable else ""))
+        self._name, self._area, self._output_type, self._load_type, self._id, ("(dim)" if self.is_dimmable else ""))
 
   def __repr__(self):
     """Returns a stringified representation of this object."""
     return str({'name': self._name, 'area': self._area,
                 'type': self._load_type, 'load': self._load_type,
-                'id': self._vid})
+                'id': self._id})
 
   def __do_query_level(self):
     """Helper to perform the actual query the current dimmer level of the
@@ -614,21 +605,21 @@ class Output(KetraEntity):
 class Button(KetraEntity):
   """This object represents a keypad button that we can trigger and handle
   events for (button presses)."""
-  def __init__(self, ketra, name, area, vid, num, button_type, direction):
-    super(Button, self).__init__(ketra, name, area, vid)
+  def __init__(self, ketra, name, area, id, num, button_type, direction):
+    super(Button, self).__init__(ketra, name, area, id)
     self._num = num
     self._button_type = button_type
     self._direction = direction
 
   def __str__(self):
     """Pretty printed string value of the Button object."""
-    return 'Button name: "%s" num: %d action: "%s" area: %s vid: %s' % (
-        self._name, self._num, self._action, self._area, self._vid)
+    return 'Button name: "%s" num: %d action: "%s" area: %s id: %s' % (
+        self._name, self._num, self._action, self._area, self._id)
 
   def __repr__(self):
     """String representation of the Button object."""
     return str({'name': self._name, 'num': self._num, 'action': self._action,
-                'area': self._area, 'vid': self._vid})
+                'area': self._area, 'id': self._id})
 
   @property
   def name(self):
@@ -654,9 +645,9 @@ class Keypad(KetraEntity):
   """
   CMD_TYPE = 'DEVICE'
 
-  def __init__(self, ketra, name, area, vid):
+  def __init__(self, ketra, name, area, id):
     """Initializes the Keypad object."""
-    super(Keypad, self).__init__(ketra, name, area, vid)
+    super(Keypad, self).__init__(ketra, name, area, id)
     self._buttons = []
     self._ketra.register_id(Keypad.CMD_TYPE, self)
 
@@ -667,8 +658,8 @@ class Keypad(KetraEntity):
 
   def __str__(self):
     """Returns a pretty-printed string for this object."""
-    return 'Keypad name: "%s", area: "%s", vid: %d' % (
-        self._name, self._area, self._vid)
+    return 'Keypad name: "%s", area: "%s", id: %d' % (
+        self._name, self._area, self._id)
 
   @property
   def buttons(self):
@@ -678,10 +669,10 @@ class Keypad(KetraEntity):
 
 class Area(object):
   """An area (i.e. a room) that contains devices/outputs/etc."""
-  def __init__(self, ketra, name, parent, vid, note):
+  def __init__(self, ketra, name, parent, id, note):
     self._ketra = ketra
     self._name = name
-    self._vid = vid
+    self._id = id
     self._note = note
     self._parent = parent
     self._outputs = []
@@ -690,8 +681,8 @@ class Area(object):
 
   def __str__(self):
     """Returns a pretty-printed string for this object."""
-    return 'Area name: "%s", vid: %s' % (
-        self._name, self._vid)
+    return 'Area name: "%s", id: %s' % (
+        self._name, self._id)
 
   def add_output(self, output):
     """Adds an output object that's part of this area, only used during
@@ -714,9 +705,9 @@ class Area(object):
     return self._name
 
   @property
-  def vid(self):
+  def id(self):
     """The integration id of the area."""
-    return self._vid
+    return self._id
 
   @property
   def outputs(self):
