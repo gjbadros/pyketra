@@ -29,7 +29,8 @@ import json
 import requests
 import socket
 from urllib.parse import quote
-
+from colormath.color_objects import LabColor, xyYColor, sRGBColor
+from colormath.color_conversions import convert_color
 
 def xml_escape(s):
   answer = s.replace("<", "&lt;")
@@ -220,13 +221,6 @@ class KetraJsonDbParser(object):
                     direction=direction)
     return button
 
-# Connect to port 2001 and write "<IBackup><GetFile><call>Backup\\Project.dc</call></GetFile></IBackup>"
-# to get a Base64 response of the last JSON file of the designcenter config.
-# Then use port 3001 to send commands.
-
-# maybe need <ILogin><Login><call><User>USER</User><Password>PASS</Password></call></Login></ILogin>
-
-  
 class Ketra(object):
   """Main Ketra Controller class.
 
@@ -493,7 +487,9 @@ class Output(KetraEntity):
     super(Output, self).__init__(ketra, name, area, vid)
     self._output_type = output_type
     self._load_type = load_type
-    self._level = 0.0
+    self._level = 1
+    self._rgb = [ None, None, None ]
+    self._xy = [ None ]
     self._query_waiters = _RequestHelper()
 
     self._ketra.register_id(Output.CMD_TYPE, self)
@@ -511,9 +507,9 @@ class Output(KetraEntity):
 
   def handle_update(self, args):
     """Handles an event update for this object, e.g. dimmer level change."""
-    _LOGGER.debug("handle_update %d -- %s" % (self._vid, args))
+    _LOGGER.warning("ketra handle_update %d -- %s" % (self._vid, args))
     level = float(args[0])
-    _LOGGER.debug("Updating %d(%s): l=%f" % (
+    _LOGGER.warning("Updating %d(%s): l=%f" % (
         self._vid, self._name, level))
     self._level = level
     self._query_waiters.notify()
@@ -537,31 +533,65 @@ class Output(KetraEntity):
   @property
   def level(self):
     """Returns the current output level by querying the remote controller."""
-    ev = self._query_waiters.request(self.__do_query_level)
-    ev.wait(self._wait_seconds)
+#    ev = self._query_waiters.request(self.__do_query_level)
+#    ev.wait(self._wait_seconds)
     return self._level
 
+  def _set_state(self, dict):
+    lightURL = 'https://' + self._ketra._host + '/ketra.cgi/api/v1/Groups/' + quote(self._name) + "/State"
+    _LOGGER.warning("Sending Ketra " + json.dumps(dict))
+    # TODO: make an option to do NOOP sends -- for now just comment out if you don't want to hit
+    # the Ketra N4 with the request
+    r = requests.put(lightURL, data=json.dumps(dict), auth=('', self._ketra._password), verify=False)
+    
+  
   @level.setter
   def level(self, new_level):
-    """Sets the new output level."""
+    """Sets the new brightness level."""
     if self._level == new_level:
       return
-#    self._ketra.send(Ketra.OP_EXECUTE, Output.CMD_TYPE, self._vid,
-#        Output.ACTION_ZONE_LEVEL, "%.2f" % new_level)
-    lightURL = 'https://' + self._ketra._host + '/ketra.cgi/api/v1/Groups/' + quote(self._name) + "/State"
-    state_noStart = { "Brightness": new_level/100,
+    self._set_state({ "Brightness": new_level/100,
                       "PowerOn": True, 
-                      "Vibrancy": 0.6, 
-                      "xChromaticity": 0.5,
-                      "yChromaticity": 0.4, 
                       "TransitionTime": 1000, 
-                      "TransitionComplete": True }
-    r = requests.put(lightURL, data=json.dumps(state_noStart), auth=('', self._ketra._password), verify=False)
-#    content = r.json()['Content']
-#    state = content['State']
+                      "TransitionComplete": True })
     self._level = new_level
-#    return True
 
+  @property
+  def rgb(self):
+    """Returns current RGB of the lamp."""
+    return self._rgb
+
+  @rgb.setter
+  def rgb(self, new_rgb):
+    """Sets new RGB levels."""
+    if self._rgb == new_rgb:
+      return
+    srgb = sRGBColor(*new_rgb)
+    xyY = convert_color(srgb, xyYColor)
+    self._set_state({ "PowerOn": True, 
+                      "xChromaticity": xyY.xyy_x,
+                      "yChromaticity": xyY.xyy_y, 
+                      "TransitionTime": 1000, 
+                      "TransitionComplete": True })
+    self._rgb = new_rgb
+
+  @property
+  def xy(self):
+    """Returns current XY of the lamp."""
+    return self._xy
+
+  @xy.setter
+  def xy(self, new_xy):
+    """Sets new XY levels."""
+    if self._xy == new_xy:
+      return
+    self._set_state({ "PowerOn": True, 
+                      "xChromaticity": new_xy[0],
+                      "yChromaticity": new_xy[1], 
+                      "TransitionTime": 1000, 
+                      "TransitionComplete": True })
+    self._xy = new_xy
+    
 ## At some later date, we may want to also specify fade and delay times    
 #  def set_level(self, new_level, fade_time, delay):
 #    self._ketra.send(Ketra.OP_EXECUTE, Output.CMD_TYPE,
