@@ -30,9 +30,11 @@ import requests
 import socket
 from math import log
 from urllib.parse import quote
+# from urllib import disable_warnings
 from colormath.color_objects import LabColor, xyYColor, sRGBColor
 from colormath.color_conversions import convert_color
 
+# urllib.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 _LOGGER = logging.getLogger(__name__)
 
 def xml_escape(s):
@@ -332,16 +334,19 @@ class Ketra(object):
     """Load the Ketra database from the server."""
     filename = self._host + "_ketraconfig.txt"
     json_db = ""
-    try:
-      if not disable_cache:
+    success = False
+    if not disable_cache:
+      try:
         f = open(filename, "r")
         json_db = json.loads(f.read())['Content']
+        _LOGGER.info("read cached ketra configuration file " + filename)
+        success = True
+      except Exception as e:
+        _LOGGER.info("Failed loading cached config file for ketra: " + str(e))
+      finally:
         f.close()
-        _LOGGER.warning("read cached ketra configuration file " + filename)
-      else:
-        raise Exception("nocache")
-    except Exception as e:
-      _LOGGER.error("Exception = " + str(e))
+    if not success:
+      _LOGGER.warning("ketra has no cached configuration file")
       groupsUrl = 'https://' + self._host + '/ketra.cgi/api/v1/groups'
       r = requests.get(groupsUrl, auth=('', self._password), verify=False)
       # convert the response into a JSON object
