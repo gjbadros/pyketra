@@ -181,7 +181,7 @@ class KetraJsonDbParser(object):
   (Output). We handle the most relevant features, but some things like LEDs,
   etc. are not implemented."""
 
-  def __init__(self, ketra, json_db):
+  def __init__(self, ketra, area, json_db):
     """Initializes the JSON parser, takes the JSON data as structured object."""
     self._ketra = ketra
     self._json_db = json_db
@@ -190,15 +190,14 @@ class KetraJsonDbParser(object):
     self.id_to_load = {}
     self.id_to_keypad = {}
     self.id_to_button = {}
-    
+    self._area = area
     self.project_name = None
 
   def parse(self):
     """Main entrypoint into the parser. It interprets and creates all the
     relevant Ketra objects and stuffs them into the appropriate hierarchy."""
 
-    area = self._parse_area("Ketra_Area") # FIXME: maybe do this off the N4 ip or hostname
-    _LOGGER.info("area = " + str(area))
+    area = self._parse_area(self._area) # FIXME: maybe do this off the N4 ip or hostname
     self.id_to_area[area.id] = area
 
     for load_json in self._json_db:
@@ -212,13 +211,13 @@ class KetraJsonDbParser(object):
 
     return True
 
-  def _parse_area(self, hostname):
+  def _parse_area(self, area_name):
     """Parses an Area tag, which is effectively a room, depending on how the
     Ketra controller programming was done."""
     area = Area(self._ketra,
-                name=hostname,
+                name=area_name,
                 parent=None,
-                id=hostname,
+                id=area_name,
                 note='')
     return area
 
@@ -230,10 +229,10 @@ class KetraJsonDbParser(object):
       out_name = out_name.strip()
     else:
       _LOGGER.info("Using dname = " + out_name)
-    area_id = 'Ketra_Area'  # FIXME
+    area_id = self._area
 
 #    area_name = self.id_to_area[area_id].name
-    load_type = "Ketra"
+    load_type = "Ketra_light"
 
     output = Output(self._ketra,
                     name=out_name,
@@ -281,7 +280,7 @@ class Ketra(object):
   OP_RESPONSE = 'R:'        # Response lines come back from Ketra with this prefix
   OP_STATUS = 'S:'          # Status report lines come back from Ketra with this prefix
 
-  def __init__(self, host, password, noop_set_state):
+  def __init__(self, host, password, area, noop_set_state = False):
     """Initializes the Ketra object. No connection is made to the remote
     device."""
     self._host = host
@@ -294,6 +293,7 @@ class Ketra(object):
     self._id_to_area = {}  # copied out from the parser
     self._id_to_load = {}  # copied out from the parser
     self._noop_set_state = noop_set_state
+    self._area = area
 
   def subscribe(self, obj, handler):
     """Subscribes to status updates of the requested object.
@@ -330,7 +330,7 @@ class Ketra(object):
     """Connects to the Ketra controller to send and receive commands and status"""
     self._conn.connect()
 
-  def load_json_db(self, disable_cache):
+  def load_json_db(self, disable_cache = False):
     """Load the Ketra database from the server."""
     filename = self._host + "_ketraconfig.txt"
     json_db = ""
@@ -340,11 +340,11 @@ class Ketra(object):
         f = open(filename, "r")
         json_db = json.loads(f.read())['Content']
         _LOGGER.info("read cached ketra configuration file " + filename)
+        f.close()
         success = True
       except Exception as e:
         _LOGGER.info("Failed loading cached config file for ketra: " + str(e))
-      finally:
-        f.close()
+        
     if not success:
       _LOGGER.warning("ketra has no cached configuration file")
       groupsUrl = 'https://' + self._host + '/ketra.cgi/api/v1/groups'
@@ -365,7 +365,7 @@ class Ketra(object):
     _LOGGER.info("Loaded json db")
     # print(json_db[0:10000])
 
-    parser = KetraJsonDbParser(ketra=self, json_db=json_db)
+    parser = KetraJsonDbParser(ketra=self, area=self._area, json_db=json_db)
     self._id_to_area = parser.id_to_area
     self._name = parser.project_name
     self._outputs = parser.outputs
