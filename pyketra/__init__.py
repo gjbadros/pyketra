@@ -31,7 +31,7 @@ import socket
 from math import log
 from urllib.parse import quote
 # from urllib import disable_warnings
-from colormath.color_objects import LabColor, xyYColor, sRGBColor
+from colormath.color_objects import LabColor, xyYColor, sRGBColor, HSVColor
 from colormath.color_conversions import convert_color
 
 # urllib.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -343,10 +343,10 @@ class Ketra(object):
         f.close()
         success = True
       except Exception as e:
-        _LOGGER.info("Failed loading cached config file for ketra: " + str(e))
+        _LOGGER.warning("Failed loading cached config file for ketra: " + str(e))
         
     if not success:
-      _LOGGER.warning("ketra has no cached configuration file")
+      _LOGGER.info("doing request for ketra configuration file")
       groupsUrl = 'https://' + self._host + '/ketra.cgi/api/v1/groups'
       r = requests.get(groupsUrl, auth=('', self._password), verify=False)
       # convert the response into a JSON object
@@ -477,6 +477,7 @@ class Output(KetraEntity):
     self._level = 0
     self._rgb = [ None, None, None ]
     self._xy = [ None, None ]
+    self._hs = [ None, None ]
     self._cct = None
     self._query_waiters = _RequestHelper()
 
@@ -556,6 +557,26 @@ class Output(KetraEntity):
                       "TransitionComplete": True })
     self._rgb = new_rgb
 
+  @property
+  def hs(self):
+    """Returns current HS of the lamp."""
+    return self._hs
+
+  @hs.setter
+  def hs(self, new_hs):
+    """Sets new Hue/Saturation levels."""
+    if self._hs == new_hs:
+      return
+    _LOGGER.info("hs = " + json.dumps(new_hs))
+    hs_color = HSVColor(new_hs[0], new_hs[1], 1.0)
+    xyY = convert_color(hs_color, xyYColor)
+    self._set_state({ "PowerOn": True, 
+                      "xChromaticity": xyY.xyy_x,
+                      "yChromaticity": xyY.xyy_y, 
+                      "TransitionTime": 1000, 
+                      "TransitionComplete": True })
+    self._hs = new_hs
+    
   @property
   def xy(self):
     """Returns current XY of the lamp."""
