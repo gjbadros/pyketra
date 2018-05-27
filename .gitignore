@@ -3,3 +3,6 @@ test_local.py
 oar.mine.nu_ketraconfig.txt
 bin/
 lib/
+*.pyc
+pyvenv.cfg
+pip-selfcheck.json
