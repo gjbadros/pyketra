@@ -472,7 +472,7 @@ class Output(KetraEntity):
   switched/dimmed load, e.g. light fixture, outlet, etc."""
   CMD_TYPE = 'LOAD'
   ACTION_ZONE_LEVEL = 1
-  _wait_seconds = 0.5  # TODO:move this to a parameter
+  #  _wait_seconds = 0.3  # TODO:move this to a parameter
 
   def __init__(self, ketra, name, area, output_type, xy_chroma, level, load_type, id):
     """Initializes the Output."""
@@ -502,6 +502,7 @@ class Output(KetraEntity):
   def __do_query_level(self):
     """Helper to perform the actual query the current dimmer level of the
     output. For pure on/off loads the result is either 0.0 or 100.0."""
+    _LOGGER.info("__do_query_level( " + self.name + " )")
     lightURL = 'https://' + self._ketra._host + '/ketra.cgi/api/v1/Groups/' + quote(self._name)
     r = requests.get(lightURL, auth=('', self._ketra._password), verify=False)
     content = r.json()['Content']
