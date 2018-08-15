@@ -14,3 +14,7 @@ logging.basicConfig(level=logging.DEBUG)
 v = Ketra(environ['KETRA_HOSTNAME'], environ['KETRA_API_PASSWORD'], 'Pool house kitchen')
 v.load_json_db(True)
 print(v.outputs)
+x = v.outputs[0]
+print(x)
+print("RGB = " + str(x.rgb))
+print("HS = " + str(x.hs))

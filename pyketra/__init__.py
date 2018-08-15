@@ -481,8 +481,11 @@ class Output(KetraEntity):
     self._load_type = load_type
     self._level = level
     self._xy = xy_chroma
-    self._rg = [ None, None, None ] # TODO set this
-    self._hs = [ None, None ]       # TODO set this
+    xyY = xyYColor(xy_chroma[0], xy_chroma[1], 1)
+    rgb = convert_color(xyY, sRGBColor)
+    self._rgb = [ rgb.rgb_r, rgb.rgb_g, rgb.rgb_b ]
+    hs = convert_color(xyY, HSVColor)
+    self._hs = [ hs.hsv_h, hs.hsv_s ]
     self._cct = None
     self._query_waiters = _RequestHelper()
 
