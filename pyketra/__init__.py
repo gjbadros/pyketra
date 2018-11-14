@@ -233,11 +233,16 @@ class KetraJsonDbParser(object):
 
 #    area_name = self.id_to_area[area_id].name
     load_type = "Ketra_light"
+    state = output_json['State']
+    xy_chroma = [state['xChromaticity'], state['yChromaticity'] ]
+    level = state['Brightness']
 
     output = Output(self._ketra,
                     name=out_name,
                     area=area_id,
                     output_type='light',
+                    xy_chroma=xy_chroma,
+                    level=level,
                     load_type=load_type,
                     id=output_json['Id'])
     return output
@@ -467,17 +472,20 @@ class Output(KetraEntity):
   switched/dimmed load, e.g. light fixture, outlet, etc."""
   CMD_TYPE = 'LOAD'
   ACTION_ZONE_LEVEL = 1
-  _wait_seconds = 0.5  # TODO:move this to a parameter
+  #  _wait_seconds = 0.3  # TODO:move this to a parameter
 
-  def __init__(self, ketra, name, area, output_type, load_type, id):
+  def __init__(self, ketra, name, area, output_type, xy_chroma, level, load_type, id):
     """Initializes the Output."""
     super(Output, self).__init__(ketra, name, area, id)
     self._output_type = output_type
     self._load_type = load_type
-    self._level = 0
-    self._rgb = [ None, None, None ]
-    self._xy = [ None, None ]
-    self._hs = [ None, None ]
+    self._level = level
+    self._xy = xy_chroma
+    xyY = xyYColor(xy_chroma[0], xy_chroma[1], 1)
+    rgb = convert_color(xyY, sRGBColor)
+    self._rgb = [ rgb.rgb_r, rgb.rgb_g, rgb.rgb_b ]
+    hs = convert_color(xyY, HSVColor)
+    self._hs = [ hs.hsv_h, hs.hsv_s ]
     self._cct = None
     self._query_waiters = _RequestHelper()
 
@@ -492,15 +500,17 @@ class Output(KetraEntity):
     """Returns a stringified representation of this object."""
     return str({'name': self._name, 'area': self._area,
                 'type': self._load_type, 'load': self._load_type,
-                'id': self._id})
+                'id': self._id, 'level': self._level, 'xy': self._xy})
 
   def __do_query_level(self):
     """Helper to perform the actual query the current dimmer level of the
     output. For pure on/off loads the result is either 0.0 or 100.0."""
+    _LOGGER.info("__do_query_level( " + self.name + " )")
     lightURL = 'https://' + self._ketra._host + '/ketra.cgi/api/v1/Groups/' + quote(self._name)
     r = requests.get(lightURL, auth=('', self._ketra._password), verify=False)
     content = r.json()['Content']
     state = content['State']
+    self._xy_chroma = [state['xChromaticity'], state['yChromaticity'] ]
     self._level = state['Brightness']
     return True
     

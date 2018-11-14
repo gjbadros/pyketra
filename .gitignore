@@ -1,5 +1,9 @@
 test_local.py
 *_config.txt
-oar.mine.nu_ketraconfig.txt
+*_ketraconfig.txt
+env
 bin/
 lib/
+*.pyc
+pyvenv.cfg
+pip-selfcheck.json

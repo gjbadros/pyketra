@@ -12,5 +12,9 @@ logging.basicConfig(level=logging.DEBUG)
 # N4 is 192.168.0.230 locally
 #v = Ketra('HOSTNAME', 'PASSWORD_FROM_KETRA_API', 'Pool house kitchen')
 v = Ketra(environ['KETRA_HOSTNAME'], environ['KETRA_API_PASSWORD'], 'Pool house kitchen')
-v.load_json_db()
+v.load_json_db(True)
 print(v.outputs)
+x = v.outputs[0]
+print(x)
+print("RGB = " + str(x.rgb))
+print("HS = " + str(x.hs))
