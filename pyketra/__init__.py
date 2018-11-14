@@ -312,7 +312,7 @@ class Ketra(object):
     if obj.id in ids:
       raise IDExistsError("ID exists %s" % obj.id)
     self._ids[cmd_type][obj.id] = obj
-    obj.name = obj.name.title().strip()
+    obj.name = obj.name.strip()
     if obj.name in self._names:
       area = self._id_to_area.get(int(obj.area))
       oldname = obj.name
