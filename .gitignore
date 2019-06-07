@@ -7,3 +7,4 @@ lib/
 *.pyc
 pyvenv.cfg
 pip-selfcheck.json
+test-env
