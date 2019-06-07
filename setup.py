@@ -3,15 +3,15 @@
 from setuptools import setup, find_packages
 
 setup(
-    name = 'pyketra',
-    version = '0.0.2',
-    license = 'MIT',
-    description = 'Python library for Ketra Controller',
-    author = 'Greg J. Badros',
-    author_email = 'badros@gmail.com',
-    url = 'http://github.com/gjbadros/pyketra',
+    name='pyketra',
+    version='0.0.2',
+    license='MIT',
+    description='Python library for Ketra Controller',
+    author='Greg J. Badros',
+    author_email='badros@gmail.com',
+    url='http://github.com/gjbadros/pyketra',
     packages=find_packages(),
-    classifiers = [
+    classifiers=[
         'Development Status :: 3 - Alpha',
         'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
