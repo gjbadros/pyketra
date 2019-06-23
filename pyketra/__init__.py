@@ -182,7 +182,7 @@ class KetraJsonDbParser:
     (Output). We handle the most relevant features, but some things like LEDs,
     etc. are not implemented."""
 
-    def __init__(self, ketra, area, json_db):
+    def __init__(self, ketra, area, json_db, suffix):
         """Initializes the JSON parser, takes the JSON data as structured object."""
         self._ketra = ketra
         self._json_db = json_db
@@ -193,6 +193,7 @@ class KetraJsonDbParser:
         self.id_to_button = {}
         self._area = area
         self.project_name = None
+        self._suffix = suffix
 
     def parse(self):
         """Main entrypoint into the parser. It interprets and creates all the
@@ -225,11 +226,9 @@ class KetraJsonDbParser:
     def _parse_output(self, output_json):
         """Parses a load, which is generally a switch controlling a set of
         lights/outlets, etc."""
-        out_name = output_json['Name']
-        if out_name:
-            out_name = out_name.strip()
-        else:
-            _LOGGER.info("Using dname = %s", out_name)
+        out_name = output_json['Name'].strip()
+        if self._suffix:
+            out_name += self._suffix
         area_id = self._area
 
 #    area_name = self.id_to_area[area_id].name
@@ -288,7 +287,7 @@ class Ketra:
     OP_RESPONSE = 'R:'        # Response lines come back from Ketra with this prefix
     OP_STATUS = 'S:'          # Status report lines come back from Ketra with this prefix
 
-    def __init__(self, host, password, area, noop_set_state=False):
+    def __init__(self, host, password, area, noop_set_state=False, suffix=None):
         """Initializes the Ketra object. No connection is made to the remote
         device."""
         self._host = host
@@ -303,6 +302,7 @@ class Ketra:
         self._noop_set_state = noop_set_state
         self._area = area
         self._outputs = []
+        self._suffix = suffix
 
     def subscribe(self, obj, handler):
         """Subscribes to status updates of the requested object.
@@ -369,7 +369,7 @@ class Ketra:
 
         _LOGGER.info("Loaded json db")
 
-        parser = KetraJsonDbParser(ketra=self, area=self._area, json_db=json_db)
+        parser = KetraJsonDbParser(ketra=self, area=self._area, json_db=json_db, suffix=self._suffix)
         self._id_to_area = parser.id_to_area
         self._name = parser.project_name
         self._outputs = parser.outputs
