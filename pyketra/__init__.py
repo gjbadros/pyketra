@@ -557,7 +557,7 @@ class Output(KetraEntity):
         # the Ketra N4 with the request
         if not self._ketra._noop_set_state:
             ketra_session.mount(lightURL, KetraHttpAdapter())
-            ketra_sessions.put(lightURL, data=json.dumps(dictionary),
+            ketra_session.put(lightURL, data=json.dumps(dictionary),
                          auth=('', self._ketra._password), verify=False)
         else:
             _LOGGER.warning("NOT ACTUALLY MAKING REQUEST TO KETRA N4")

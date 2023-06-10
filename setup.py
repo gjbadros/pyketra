@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='pyketra',
-    version='0.0.4',
+    version='0.0.5',
     license='MIT',
     description='Python library for Ketra Controller',
     author='Greg J. Badros',
