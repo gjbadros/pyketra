@@ -8,3 +8,6 @@ lib/
 pyvenv.cfg
 pip-selfcheck.json
 test-env
+lib64/
+share/
+pyketra.egg-info/

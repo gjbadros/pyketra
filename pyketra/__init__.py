@@ -34,8 +34,26 @@ from colormath.color_objects import LabColor, xyYColor, sRGBColor, HSVColor
 from colormath.color_conversions import convert_color
 import requests
 
+import ssl
+from urllib3.util.ssl_ import create_urllib3_context
+from urllib3.poolmanager import PoolManager
+from requests.adapters import HTTPAdapter
+
+ctx = create_urllib3_context()
+ctx.load_default_certs()
+ctx.options |= 0x4  # ssl.OP_LEGACY_SERVER_CONNECT
+print("ALLOW_LEGACY_SERVER_CONNECT")
+
 # urllib.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 _LOGGER = logging.getLogger(__name__)
+
+class KetraHttpAdapter(HTTPAdapter):
+    """"Transport adapter" that allows us to connect to Ketra"""
+
+    def init_poolmanager(self, connections, maxsize, block=False):
+        self.poolmanager = PoolManager(ssl_context=ctx)
+
+ketra_session = requests.Session()
 
 def xml_escape(s):
     """Escape XML meta characters '<' and '&'."""
@@ -352,9 +370,10 @@ class Ketra:
                 _LOGGER.warning("Failed loading cached config file for ketra: %s", e)
 
         if not success:
-            _LOGGER.info("doing request for ketra configuration file")
             groupsUrl = 'https://' + self._host + '/ketra.cgi/api/v1/groups'
-            r = requests.get(groupsUrl, auth=('', self._password), verify=False)
+            _LOGGER.info("doing request for ketra configuration file ", groupsUrl)
+            ketra_session.mount(groupsUrl, KetraHttpAdapter())
+            r = ketra_session.get(groupsUrl, auth=('', self._password), verify=False)
             # convert the response into a JSON object
             responseEnvelope = r.json()
             # pull the relevant content out of the response envelope
@@ -510,7 +529,8 @@ class Output(KetraEntity):
         output. For pure on/off loads the result is either 0.0 or 100.0."""
         _LOGGER.info("__do_query_level(%s)", self.name)
         lightURL = 'https://' + self._ketra._host + '/ketra.cgi/api/v1/Groups/' + quote(self._name)
-        r = requests.get(lightURL, auth=('', self._ketra._password), verify=False)
+        ketra_session.mount(lightURL, KetraHttpAdapter())
+        r = ketra_session.get(lightURL, auth=('', self._ketra._password), verify=False)
         content = r.json()['Content']
         state = content['State']
         self._xy_chroma = [state['xChromaticity'], state['yChromaticity']]
@@ -536,7 +556,8 @@ class Output(KetraEntity):
         # TODO: make an option to do NOOP sends -- for now just comment out if you don't want to hit
         # the Ketra N4 with the request
         if not self._ketra._noop_set_state:
-            requests.put(lightURL, data=json.dumps(dictionary),
+            ketra_session.mount(lightURL, KetraHttpAdapter())
+            ketra_sessions.put(lightURL, data=json.dumps(dictionary),
                          auth=('', self._ketra._password), verify=False)
         else:
             _LOGGER.warning("NOT ACTUALLY MAKING REQUEST TO KETRA N4")
