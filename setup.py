@@ -20,6 +20,6 @@ setup(
         'Topic :: Home Automation',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
-    install_requires=['colormath'],
+    install_requires=['colormath', 'requests'],
     zip_safe=True,
 )

@@ -1,5 +1,5 @@
-pyvantage
-=========
+pyketra
+=======
 A simple Python library for controlling a Ketra-brand system for lighting, etc.
 
 
